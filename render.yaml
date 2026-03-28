@@ -1,0 +1,23 @@
+# render.yaml
+# Deploys the FastAPI backend (which also serves frontend static files).
+services:
+  - type: web
+    name: standup-comedy-ai
+    env: python
+    plan: starter                  # choose plan: free, starter, standard, etc.
+    branch: main                   # branch Render should auto-deploy from
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "uvicorn backend.app:app --host 0.0.0.0 --port $PORT"
+    disk: 1024
+    instanceType: starter
+    healthCheckPath: "/"
+    autoDeploy: true
+    envVars:
+      # DO NOT put real secret values here. Set them in Render Dashboard (Environment > Secrets)
+      - key: GEMINI_API_KEY
+        value: ""
+      - key: MURF_API_KEY
+        value: ""
+      # optional fallback env names that server config.py checks
+      - key: OPENAI_API_KEY
+        value: ""

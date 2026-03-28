@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Stand-Up Comedy Show</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #0a0f23;
+            color: #d0d0d0;
+            overflow: hidden;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.5s ease;
+        }
+        .screen.active { display: flex; }
+
+        .background-screen {
+            background: #0a0f23;
+        }
+
+        #welcome-screen .content {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 50px;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(242, 140, 56, 0.2);
+        }
+
+        #welcome-screen h1 {
+            font-size: clamp(2.5em, 6vw, 4em);
+            color: #f28c38;
+            margin-bottom: 30px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            border: 3px solid #f28c38;
+            background: transparent;
+            color: #f28c38;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            margin-top: 30px;
+        }
+
+        button:hover:not(:disabled) {
+            background: #f28c38;
+            color: #181818;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(242, 140, 56, 0.3);
+        }
+
+        button:disabled {
+            border-color: #666;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.5;
+        }
+
+        #customization-hub {
+            padding: 20px;
+            background: #0a0f23;
+            overflow: hidden;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #customization-hub h2 {
+            font-size: clamp(1.5em, 4vw, 2.2em);
+            margin: 0 0 15px 0;
+            color: #ffffff;
+            text-align: center;
+        }
+
+        .customization-panels {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 1400px;
+            height: calc(100vh - 300px);
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        .panel {
+            background: rgba(40, 40, 40, 0.9);
+            padding: 20px;
+            border-radius: 15px;
+            flex: 1;
+            border: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .panel h3 {
+            color: #f28c38;
+            font-size: 1.3em;
+            margin: 0 0 15px 0;
+            text-align: center;
+        }
+
+        .cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 5px;
+        }
+
+        .cards-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .cards-container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .cards-container::-webkit-scrollbar-thumb {
+            background: rgba(242, 140, 56, 0.3);
+            border-radius: 3px;
+        }
+
+        .persona-card {
+            border: 2px solid #555;
+            padding: 15px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(50, 50, 50, 0.8);
+            text-align: left;
+            flex-shrink: 0;
+        }
+
+        .persona-card:hover {
+            border-color: #f28c38;
+            box-shadow: 0 0 15px rgba(242, 140, 56, 0.3);
+        }
+
+        .persona-card.selected {
+            border-color: #f28c38;
+            background: rgba(242, 140, 56, 0.1);
+            box-shadow: 0 0 20px rgba(242, 140, 56, 0.4);
+        }
+
+        .persona-card h4 {
+            color: #ffffff;
+            margin: 0 0 6px 0;
+            font-size: 1em;
+        }
+
+        .persona-card p {
+            color: #a0a0a0;
+            font-size: 0.85em;
+            margin: 0;
+        }
+
+        .voice-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+
+        .voice-card {
+            border: 2px solid #555;
+            padding: 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(50, 50, 50, 0.8);
+            text-align: center;
+        }
+
+        .voice-card:hover {
+            border-color: #f28c38;
+            box-shadow: 0 0 15px rgba(242, 140, 56, 0.3);
+        }
+
+        .voice-card.selected {
+            border-color: #f28c38;
+            background: rgba(242, 140, 56, 0.1);
+            box-shadow: 0 0 20px rgba(242, 140, 56, 0.3);
+        }
+
+        .voice-card h5 {
+            color: #ffffff;
+            margin: 0 0 4px 0;
+            font-size: 0.95em;
+        }
+
+        .voice-card p {
+            margin: 0;
+            font-size: 0.7em;
+            color: #a0a0a0;
+        }
+
+        .selection-status {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: inline-block;
+            font-size: 0.9em;
+            text-align: center;
+            width: 100%;
+        }
+
+        .selection-status span {
+            color: #a0a0a0;
+            margin: 0 10px;
+        }
+
+        .selection-status .selected {
+            color: #f28c38;
+        }
+
+        #curtain-screen {
+            background-color: #0a0f23;
+            position: relative;
+        }
+
+        .curtain {
+            position: absolute;
+            top: 0;
+            width: 50.1%;
+            height: 100%;
+            background: linear-gradient(90deg, #8b0000 0%, #dc143c 50%, #8b0000 100%);
+            transition: transform 4s cubic-bezier(0.86, 0, 0.07, 1);
+            z-index: 100;
+        }
+
+        #curtain-left { left: 0; }
+        #curtain-right { right: 0; }
+
+        #curtain-screen.opening #curtain-left { transform: translateX(-100%); }
+        #curtain-screen.opening #curtain-right { transform: translateX(100%); }
+
+        #loading-text {
+            color: #ffffff;
+            font-size: 2em;
+            z-index: 10;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        #performance-screen {
+            justify-content: flex-start;
+            background: #0a0f23;
+            position: relative;
+        }
+
+        .spotlight {
+            position: absolute;
+            top: 8%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.25) 20%, rgba(255, 255, 255, 0.1) 40%, transparent 70%);
+            border-radius: 50%;
+            animation: spotlightPulse 4s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        @keyframes spotlightPulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        #comedian-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        .performance-ui {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            z-index: 100;
+        }
+
+        .subtitle-bubble {
+            background: rgba(0, 0, 0, 0.95);
+            padding: 20px 30px;
+            border-radius: 15px;
+            font-size: clamp(1em, 2vw, 1.3em);
+            border: 2px solid #f28c38;
+            min-height: 60px;
+            width: 100%;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 5px 20px rgba(242, 140, 56, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        #stop-show-btn {
+            border-color: #d32f2f;
+            color: #d32f2f;
+        }
+
+        #stop-show-btn:hover {
+            background: #d32f2f;
+            color: #ffffff;
+        }
+
+        .overlay-panel {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 50px;
+            border-radius: 20px;
+            border: 2px solid #f28c38;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 30px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .error-message {
+            background: rgba(211, 47, 47, 0.1);
+            border: 2px solid #d32f2f;
+            color: #ff6666;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
+            display: none;
+            font-size: 0.9em;
+        }
+
+        .starry-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .star {
+            position: absolute;
+            background: #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(255, 255, 255, 0.9), 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+
+        .star.twinkle-1 {
+            animation: twinkle1 2.5s ease-in-out infinite;
+        }
+
+        .star.twinkle-2 {
+            animation: twinkle2 3s ease-in-out infinite;
+        }
+
+        .star.twinkle-3 {
+            animation: twinkle3 2s ease-in-out infinite;
+        }
+
+        @keyframes twinkle1 {
+            0%, 100% { 
+                opacity: 0.3; 
+                transform: scale(0.8);
+                box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+            }
+            50% { 
+                opacity: 1; 
+                transform: scale(1.5);
+                box-shadow: 0 0 8px rgba(255, 255, 255, 1), 0 0 12px rgba(255, 255, 255, 0.7);
+            }
+        }
+
+        @keyframes twinkle2 {
+            0%, 100% { 
+                opacity: 0.4; 
+                transform: scale(0.7);
+                box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+            }
+            50% { 
+                opacity: 1; 
+                transform: scale(1.3);
+                box-shadow: 0 0 8px rgba(255, 255, 255, 1), 0 0 12px rgba(255, 255, 255, 0.7);
+            }
+        }
+
+        @keyframes twinkle3 {
+            0%, 100% { 
+                opacity: 0.2; 
+                transform: scale(0.9);
+                box-shadow: 0 0 3px rgba(255, 255, 255, 0.5);
+            }
+            50% { 
+                opacity: 1; 
+                transform: scale(1.4);
+                box-shadow: 0 0 8px rgba(255, 255, 255, 1), 0 0 12px rgba(255, 255, 255, 0.7);
+            }
+        }
+
+        .shooting-star {
+            position: absolute;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.7) 30%, transparent);
+            border-radius: 50%;
+            height: 2px;
+            width: 100px;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 1), 0 0 12px rgba(255, 255, 255, 0.6);
+        }
+
+        @keyframes shoot {
+            0% {
+                transform: translateX(0) translateY(0) rotate(-45deg);
+                opacity: 0;
+            }
+            5% {
+                opacity: 1;
+            }
+            95% {
+                opacity: 0.9;
+            }
+            100% {
+                transform: translateX(-120vw) translateY(120vh) rotate(-45deg);
+                opacity: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .customization-panels {
+                flex-direction: column;
+                height: auto;
+                padding: 0 10px;
+            }
+            .voice-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <audio id="audio-player" style="display: none;"></audio>
+
+    <div id="welcome-screen" class="screen active background-screen">
+        <div class="content">
+            <h1>🎤 Welcome to Giggle Bot 🎤</h1>
+            <p style="font-size: 1em; color: #a0a0a0;">Pick your comedian persona & enjoy the show!</p>
+            <button id="grab-seat-btn">Grab a Seat</button>
+        </div>
+    </div>
+
+    <div id="customization-hub" class="screen">
+        <h2>Choose Your Comedy Style</h2>
+        
+        <div class="selection-status">
+            <span>Persona: <span id="persona-status">None</span></span>
+            <span>Voice: <span id="voice-status">None</span></span>
+        </div>
+        
+        <div class="customization-panels">
+            <div class="panel">
+                <h3>Pick a Persona</h3>
+                <div class="cards-container" id="persona-cards"></div>
+            </div>
+            <div class="panel">
+                <h3>Pick a Voice</h3>
+                <div class="voice-cards" id="voice-cards"></div>
+            </div>
+        </div>
+        <button id="start-show-btn" disabled>Start the Show</button>
+        <div class="error-message" id="error-message"></div>
+    </div>
+
+    <div id="curtain-screen" class="screen">
+        <div class="curtain" id="curtain-left"></div>
+        <div class="curtain" id="curtain-right"></div>
+        <div id="loading-text"></div>
+    </div>
+
+    <div id="performance-screen" class="screen">
+        <div class="starry-background" id="starry-background"></div>
+        <div class="spotlight"></div>
+        <canvas id="comedian-canvas"></canvas>
+        <div class="performance-ui">
+            <div class="subtitle-bubble" id="subtitle-display"></div>
+            <button id="stop-show-btn">Stop the Show</button>
+        </div>
+    </div>
+
+    <div id="encore-screen" class="screen background-screen">
+        <div class="overlay-panel">
+            <h2>Encore!</h2>
+            <p>Want to watch another show?</p>
+            <div class="button-group">
+                <button id="watch-again-btn">Watch Again</button>
+                <button id="exit-btn">Exit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const screens = {
+            welcome: document.getElementById('welcome-screen'),
+            customization: document.getElementById('customization-hub'),
+            curtain: document.getElementById('curtain-screen'),
+            performance: document.getElementById('performance-screen'),
+            encore: document.getElementById('encore-screen')
+        };
+
+        const buttons = {
+            grabSeat: document.getElementById('grab-seat-btn'),
+            startShow: document.getElementById('start-show-btn'),
+            stopShow: document.getElementById('stop-show-btn'),
+            watchAgain: document.getElementById('watch-again-btn'),
+            exit: document.getElementById('exit-btn')
+        };
+
+        let currentPersona = null;
+        let currentVoice = null;
+        let isRunning = false;
+        let animationFrameId = null;
+        let scriptPhrases = [];
+        let fullScript = '';
+        let ssmlScript = '';
+        let comedian = null;
+        let renderer = null;
+        let scene = null;
+        let camera = null;
+        let audioChunksReady = [];
+        let audioPreparationComplete = false;
+
+        const audioPlayer = document.getElementById('audio-player');
+        const subtitleDisplay = document.getElementById('subtitle-display');
+        const loadingText = document.getElementById('loading-text');
+        const errorMessage = document.getElementById('error-message');
+
+        const personas = {
+            "the_overthinker": { name: "The Anxious Overthinker", desc: "Worries about everything with funny twists." },
+            "the_grumpy_skeptic": { name: "The Grumpy Skeptic", desc: "Grumbles about life with sarcastic humor." },
+            "the_energetic_oddball": { name: "The Energetic Oddball", desc: "Makes wild, funny connections." },
+            "the_smooth_storyteller": { name: "The Smooth Storyteller", desc: "Tells easy, funny stories." }
+        };
+
+        const voices = {
+            "conversational": { name: "Conversational", desc: "Casual and friendly tone." },
+            "quirky": { name: "Quirky", desc: "Energetic and playful voice." },
+            "storytelling": { name: "Storytelling", desc: "Warm and engaging style." },
+            "deep": { name: "Deep", desc: "Smooth and rich voice." },
+            "sarcastic": { name: "Sarcastic", desc: "Dry and witty tone." },
+            "childlike": { name: "Childlike", desc: "Playful and innocent tone." }
+        };
+
+        function showScreen(screenId) {
+            Object.values(screens).forEach(screen => screen.classList.remove('active'));
+            screens[screenId].classList.add('active');
+        }
+
+        function updateButtonState() {
+            buttons.startShow.disabled = !(currentPersona && currentVoice);
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            setTimeout(() => errorMessage.style.display = 'none', 5000);
+        }
+
+        function createStars(count) {
+            const starryBackground = document.getElementById('starry-background');
+
+            for (let i = 0; i < count; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                
+                const twinkleType = Math.floor(Math.random() * 3) + 1;
+                star.classList.add(`twinkle-${twinkleType}`);
+                
+                const size = Math.random() * 2.5 + 1;
+                star.style.width = `${size}px`;
+                star.style.height = `${size}px`;
+                
+                star.style.left = `${Math.random() * 100}vw`;
+                star.style.top = `${Math.random() * 100}vh`;
+                
+                star.style.animationDelay = `${Math.random() * 3}s`;
+                
+                starryBackground.appendChild(star);
+            }
+
+            function createShootingStar() {
+                const shootingStar = document.createElement('div');
+                shootingStar.className = 'shooting-star';
+                
+                shootingStar.style.left = `${Math.random() * 40 + 60}vw`;
+                shootingStar.style.top = `${Math.random() * 40}vh`;
+                
+                const duration = Math.random() * 1.5 + 1.5;
+                shootingStar.style.animation = `shoot ${duration}s linear`;
+                
+                starryBackground.appendChild(shootingStar);
+                
+                setTimeout(() => {
+                    shootingStar.remove();
+                }, duration * 1000);
+            }
+
+            setInterval(() => {
+                const numStars = Math.random() > 0.6 ? 2 : 1;
+                for (let i = 0; i < numStars; i++) {
+                    setTimeout(() => createShootingStar(), i * 300);
+                }
+            }, 2000);
+
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => createShootingStar(), Math.random() * 2000);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            createStars(80);
+
+            const personaCards = document.getElementById('persona-cards');
+            Object.entries(personas).forEach(([key, value]) => {
+                const card = document.createElement('div');
+                card.className = 'persona-card';
+                card.innerHTML = `<h4>${value.name}</h4><p>${value.desc}</p>`;
+                card.addEventListener('click', () => {
+                    currentPersona = key;
+                    document.querySelectorAll('.persona-card').forEach(c => c.classList.remove('selected'));
+                    card.classList.add('selected');
+                    document.getElementById('persona-status').textContent = value.name;
+                    updateButtonState();
+                });
+                personaCards.appendChild(card);
+            });
+
+            const voiceCards = document.getElementById('voice-cards');
+            Object.entries(voices).forEach(([key, value]) => {
+                const card = document.createElement('div');
+                card.className = 'voice-card';
+                card.innerHTML = `<h5>${value.name}</h5><p>${value.desc}</p>`;
+                card.addEventListener('click', () => {
+                    currentVoice = key;
+                    document.querySelectorAll('.voice-card').forEach(c => c.classList.remove('selected'));
+                    card.classList.add('selected');
+                    document.getElementById('voice-status').textContent = value.name;
+                    updateButtonState();
+                });
+                voiceCards.appendChild(card);
+            });
+
+            buttons.grabSeat.addEventListener('click', () => showScreen('customization'));
+            buttons.startShow.addEventListener('click', startShow);
+            buttons.stopShow.addEventListener('click', () => {
+                isRunning = false;
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+                subtitleDisplay.textContent = "Show stopped!";
+                setTimeout(() => showScreen('encore'), 2000);
+            });
+            buttons.watchAgain.addEventListener('click', () => {
+                currentPersona = null;
+                currentVoice = null;
+                audioChunksReady = [];
+                audioPreparationComplete = false;
+                document.querySelectorAll('.persona-card').forEach(c => c.classList.remove('selected'));
+                document.querySelectorAll('.voice-card').forEach(c => c.classList.remove('selected'));
+                document.getElementById('persona-status').textContent = 'None';
+                document.getElementById('voice-status').textContent = 'None';
+                updateButtonState();
+                showScreen('customization');
+            });
+            buttons.exit.addEventListener('click', () => showScreen('welcome'));
+
+            function init3D() {
+                const canvas = document.getElementById('comedian-canvas');
+                if (!canvas) {
+                    console.error('Canvas element not found!');
+                    subtitleDisplay.textContent = 'Error: Canvas not found!';
+                    return;
+                }
+                renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+                if (!renderer) {
+                    console.error('Renderer initialization failed!');
+                    subtitleDisplay.textContent = 'Error: Renderer failed!';
+                    return;
+                }
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setClearColor(0x000000, 0);
+
+                scene = new THREE.Scene();
+                camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 2, 5);
+                camera.lookAt(0, 1, 0);
+
+                const light1 = new THREE.DirectionalLight(0xffffff, 1.5);
+                light1.position.set(2, 4, 3);
+                scene.add(light1);
+
+                const light2 = new THREE.DirectionalLight(0xf28c38, 1.2, 10);
+                light2.position.set(-2, 3, -2);
+                scene.add(light2);
+
+                scene.add(new THREE.AmbientLight(0x404040, 1.2));
+
+                const loader = new THREE.GLTFLoader();
+                loader.load(`/model1.glb?ver=${Date.now()}`, function (gltf) {
+                    comedian = gltf.scene;
+                    comedian.position.set(0, 1, 0);
+                    comedian.scale.set(3, 3, 3);
+                    comedian.rotation.y = -Math.PI / 2;
+                    scene.add(comedian);
+                    console.log('✅ 3D Model loaded successfully!');
+                    
+                    if (audioPreparationComplete) {
+                        console.log('🎬 Model loaded and audio ready - starting show immediately!');
+                        performShow();
+                    }
+                }, undefined, function (error) {
+                    console.error('Error loading GLB model:', error);
+                    subtitleDisplay.textContent = 'Error: Model failed to load!';
+                });
+
+                animate();
+            }
+
+            function animate() {
+                animationFrameId = requestAnimationFrame(animate);
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                }
+            }
+
+            window.addEventListener('resize', () => {
+                if (renderer && camera) {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                }
+            });
+
+            async function prepareAudioChunks() {
+                try {
+                    console.log('🎤 Preparing audio chunks for all phrases...');
+                    loadingText.textContent = 'Generating voice audio...';
+                    
+                    audioChunksReady = [];
+                    let cumulativeTime = 0;
+                    
+                    for (let i = 0; i < scriptPhrases.length; i++) {
+                        loadingText.textContent = `Generating voice ${i + 1}/${scriptPhrases.length}...`;
+                        
+                        const voiceResponse = await fetch('/api/synthesize', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                text: scriptPhrases[i],
+                                persona: currentVoice 
+                            })
+                        });
+
+                        if (voiceResponse.ok) {
+                            const audioData = await voiceResponse.json();
+                            if (audioData.success && audioData.audio_base64) {
+                                audioChunksReady.push({
+                                    base64: audioData.audio_base64,
+                                    phrase: scriptPhrases[i],
+                                    index: i,
+                                    startTime: cumulativeTime
+                                });
+                                
+                                const wordCount = scriptPhrases[i].split(' ').length;
+                                const estimatedDuration = wordCount * 0.4;
+                                cumulativeTime += estimatedDuration + 0.5;
+                                
+                                console.log(`✅ Audio chunk ${i + 1}/${scriptPhrases.length} prepared`);
+                            }
+                        }
+                    }
+                    
+                    console.log(`✅ All ${audioChunksReady.length} audio chunks prepared!`);
+                    audioPreparationComplete = true;
+                    loadingText.textContent = 'Audio ready! Loading 3D model...';
+                    
+                } catch (error) {
+                    console.error('❌ Audio preparation error:', error);
+                    audioChunksReady = [];
+                    audioPreparationComplete = true;
+                    loadingText.textContent = 'Audio error - will use text-only mode...';
+                }
+            }
+
+            async function startShow() {
+                showScreen('curtain');
+                loadingText.textContent = 'Generating your comedy routine...';
+                audioChunksReady = [];
+                audioPreparationComplete = false;
+
+                try {
+                    console.log('Sending request to generate joke...');
+                    
+                    const response = await fetch('/api/generate_joke', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ persona: currentPersona })
+                    });
+
+                    console.log('Response status:', response.status);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Received data:', data);
+                        
+                        if (data.success && data.phrases) {
+                            scriptPhrases = data.phrases;
+                            fullScript = data.full_script;
+                            ssmlScript = data.ssml_script;
+                            loadingText.textContent = `Comedy about: ${data.topic}`;
+                        } else {
+                            throw new Error(data.error || 'No script generated');
+                        }
+                    } else {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.detail || 'Generation failed');
+                    }
+                } catch (error) {
+                    console.error('Script generation error:', error);
+                    loadingText.textContent = 'Using fallback script...';
+                    
+                    scriptPhrases = [
+                        "Hey everyone! Great to be here tonight!",
+                        "So I was at the coffee shop this morning...",
+                        "And the barista asks me, 'What size?'",
+                        "I said medium. She said, 'We have tall, grande, and venti.'",
+                        "I'll have a medium amount of confusion please!",
+                        "Why can't coffee just be small, medium, and large?",
+                        "It's like they're testing us before we've had our caffeine!",
+                        "Thank you, you've been wonderful!"
+                    ];
+                    fullScript = scriptPhrases.join(' ');
+                    ssmlScript = scriptPhrases.join(' <break time="0.5s"/> ');
+                }
+
+                await prepareAudioChunks();
+
+                setTimeout(() => {
+                    screens.curtain.classList.add('opening');
+                    loadingText.textContent = "Show starting...";
+                    
+                    setTimeout(() => {
+                        showScreen('performance');
+                        init3D();
+                        
+                        if (comedian && audioPreparationComplete) {
+                            console.log('🎬 Both model and audio ready - starting immediately!');
+                            performShow();
+                        } else {
+                            console.log('⏳ Waiting for model to load...');
+                        }
+                    }, 4000);
+                }, 1000);
+            }
+
+            async function performShow() {
+                isRunning = true;
+                subtitleDisplay.textContent = "Get ready...";
+
+                try {
+                    if (audioChunksReady.length === 0) {
+                        console.warn('⚠️ No audio chunks available, using text-only mode');
+                        await performTextOnly();
+                        return;
+                    }
+                    
+                    console.log(`🎭 Starting show with ${audioChunksReady.length} audio chunks`);
+                    
+                    subtitleDisplay.textContent = scriptPhrases[0];
+                    let currentChunkIndex = 0;
+                    
+                    async function playNextChunk() {
+                        if (!isRunning || currentChunkIndex >= audioChunksReady.length) {
+                            if (isRunning) {
+                                isRunning = false;
+                                subtitleDisplay.textContent = "Thank you! Goodnight!";
+                                setTimeout(() => showScreen('encore'), 2500);
+                            }
+                            return;
+                        }
+                        
+                        const chunk = audioChunksReady[currentChunkIndex];
+                        console.log(`🎤 Playing chunk ${currentChunkIndex + 1}/${audioChunksReady.length}: "${chunk.phrase}"`);
+                        
+                        const cleanPhrase = chunk.phrase.replace(/\[SESSION-\d+-[\d.]+\]/g, '').replace(/Show ID: [\d-]+/g, '').trim();
+                        subtitleDisplay.textContent = cleanPhrase;
+                        
+                        audioPlayer.src = 'data:audio/mpeg;base64,' + chunk.base64;
+                        
+                        audioPlayer.onended = () => {
+                            if (!isRunning) return;
+                            
+                            setTimeout(() => {
+                                currentChunkIndex++;
+                                playNextChunk();
+                            }, 500);
+                        };
+                        
+                        audioPlayer.onerror = () => {
+                            console.error('Audio playback error, skipping to next chunk');
+                            currentChunkIndex++;
+                            playNextChunk();
+                        };
+                        
+                        try {
+                            await audioPlayer.play();
+                        } catch (e) {
+                            console.error('Play error:', e);
+                            currentChunkIndex++;
+                            playNextChunk();
+                        }
+                    }
+                    
+                    playNextChunk();
+                    
+                } catch (error) {
+                    console.error('❌ Performance error:', error);
+                    subtitleDisplay.textContent = `Error: ${error.message}`;
+                    await new Promise(r => setTimeout(r, 2000));
+                    performTextOnly();
+                }
+            }
+
+            async function performTextOnly() {
+                console.log('📝 Performing text-only show...');
+                subtitleDisplay.textContent = "Let's begin!";
+                await new Promise(r => setTimeout(r, 1500));
+                
+                for (let i = 0; i < scriptPhrases.length && isRunning; i++) {
+                    subtitleDisplay.textContent = scriptPhrases[i];
+                    const words = scriptPhrases[i].split(' ').length;
+                    await new Promise(r => setTimeout(r, Math.max(2000, words * 250)));
+                }
+
+                if (isRunning) {
+                    isRunning = false;
+                    subtitleDisplay.textContent = "That's all! Thank you!";
+                    setTimeout(() => showScreen('encore'), 2500);
+                }
+            }
+
+            showScreen('welcome');
+            console.log('✅ App initialized');
+        });
+    </script>
+</body>
+</html>
