@@ -76,7 +76,7 @@ Virtual-Standup-Comedy-Show/
 
 ```bash
 git clone https://github.com/nitishbavalatti/Virtual-Stand-Up-Comedy-Show.git
-cd virtual-comedy-show
+cd Virtual-Stand-Up-Comedy-Show
 ```
 
 ---
