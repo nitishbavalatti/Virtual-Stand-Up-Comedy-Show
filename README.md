@@ -165,18 +165,22 @@ Always use environment variables (`.env`)
 5. Frontend plays audio + subtitles
 6. 3D model performs the show
 
----
 
-## 📸 Demo (Add Later)
 
-* Add screenshots or GIF here
-* Example:
+## 📸 Demo 
+<img width="1918" height="977" alt="Screenshot 2026-06-20 083721" src="https://github.com/user-attachments/assets/309249c2-c14c-4bf3-b440-50a1d2b2d58e" />
+<img width="1918" height="975" alt="Screenshot 2026-06-20 083729" src="https://github.com/user-attachments/assets/3ea457a3-a6a8-4c04-ba7a-df908b483ed3" />
+<img width="1918" height="975" alt="Screenshot 2026-06-20 083759" src="https://github.com/user-attachments/assets/2712c7b5-1594-438c-9d61-2c11efd11437" />
+<img width="1918" height="981" alt="Screenshot 2026-06-20 083959" src="https://github.com/user-attachments/assets/c6babacd-9bd7-42f7-880a-6e253dec5eb2" />
 
-```
-![Demo](demo.gif)
-```
 
----
+
+
+
+
+
+
+
 
 ## 💡 Future Improvements
 
