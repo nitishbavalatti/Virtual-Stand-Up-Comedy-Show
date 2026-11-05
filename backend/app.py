@@ -155,8 +155,8 @@ async def fetch_trending_phrase() -> str:
             return phrase.strip()
         return "funny topic"
     except Exception as e:
-        logger.warning(f"Could not fetch trends: {e}")
-        return random.choice(["coffee", "phones", "weather", "pizza", "traffic", "shopping", "TV shows", "work"])
+        logger.warning(f"Google Trends unavailable. Using fallback topic: {e}")
+        return "funny topic"
 
 @app.post("/api/generate_joke")
 async def generate_joke(req: JokeRequest):
