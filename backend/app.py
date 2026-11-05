@@ -30,10 +30,9 @@ app.add_middleware(
 )
 
 # === DIRECTLY EMBED API KEYS HERE ===
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") 
 GOOGLE_TRENDS_API_KEY = os.getenv("GOOGLE_TRENDS_API_KEY")
-
 # ---------------------------------------------------------
 # Comedy Personas
 # ---------------------------------------------------------
@@ -155,9 +154,9 @@ async def fetch_trending_phrase() -> str:
             logger.info(f"🎣 Using trending topic: {phrase}")
             return phrase.strip()
         return "funny topic"
-        except Exception as e:
-            logger.warning(f"Google Trends unavailable. Using fallback topic: {e}")
-            return "funny topic"
+    except Exception as e:
+        logger.warning(f"Could not fetch trends: {e}")
+        return random.choice(["coffee", "phones", "weather", "pizza", "traffic", "shopping", "TV shows", "work"])
 
 @app.post("/api/generate_joke")
 async def generate_joke(req: JokeRequest):
@@ -206,7 +205,7 @@ Topic: "{topic}"
             {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}
         ]
 
-        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
         for attempt in range(2):  # Reduced retries for speed
             async with httpx.AsyncClient(timeout=40.0) as client:  # Reduced timeout
