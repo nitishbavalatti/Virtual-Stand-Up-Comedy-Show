@@ -156,8 +156,11 @@ async def fetch_trending_phrase() -> str:
             return phrase.strip()
         return "funny topic"
     except Exception as e:
-        logger.warning(f"Could not fetch trends: {e}")
-        return random.choice(["coffee", "phones", "weather", "pizza", "traffic", "shopping", "TV shows", "work"])
+    logger.exception("JOKE GENERATION FAILED")
+    raise HTTPException(
+        status_code=500,
+        detail=f"{type(e).__name__}: {str(e)}"
+    )
 
 @app.post("/api/generate_joke")
 async def generate_joke(req: JokeRequest):
