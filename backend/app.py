@@ -205,7 +205,7 @@ Topic: "{topic}"
             {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}
         ]
 
-        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
 
         for attempt in range(2):  # Reduced retries for speed
             async with httpx.AsyncClient(timeout=40.0) as client:  # Reduced timeout
