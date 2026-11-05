@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 requests
+httpx
 websockets
 python-dotenv
 google-generativeai
