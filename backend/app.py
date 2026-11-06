@@ -211,7 +211,7 @@ async def generate_joke(req: JokeRequest):
 
         model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
 
-        for attempt in range(2):  # Reduced retries for speed
+        for attempt in range(4):  # Reduced retries for speed
             async with httpx.AsyncClient(timeout=40.0) as client:  # Reduced timeout
                 res = await client.post(
                     model_url,
@@ -223,8 +223,12 @@ async def generate_joke(req: JokeRequest):
                     }
                 )
 
-            if res.status_code == 429:
-                await asyncio.sleep(3 * attempt)
+            if res.status_code in [429, 500, 502, 503, 504]:
+                logger.warning(
+                    f"Gemini temporarily unavailable: {res.status_code}. "
+                    f"Retry {attempt + 1}/4"
+                )
+                await asyncio.sleep(2 ** (attempt + 1))
                 continue
 
             if res.status_code != 200:
