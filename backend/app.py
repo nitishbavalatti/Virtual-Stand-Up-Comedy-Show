@@ -7,7 +7,6 @@ import logging
 import base64
 import httpx
 import random
-import time
 import os
 import re
 import json
@@ -19,6 +18,10 @@ import asyncio
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("comedy-backend")
 
+# httpx logs full request URLs at INFO level; keep that quiet so nothing sensitive leaks
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 app = FastAPI(title="Virtual Comedy Show")
 
 app.add_middleware(
@@ -29,10 +32,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === DIRECTLY EMBED API KEYS HERE ===
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") 
+# Set these in Render -> Environment
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 GOOGLE_TRENDS_API_KEY = os.getenv("GOOGLE_TRENDS_API_KEY")
+
+# Set GEMINI_MODEL in Render if you want a different model without editing code.
+# Verify the model ID at ai.google.dev before using it.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 # ---------------------------------------------------------
 # Comedy Personas
 # ---------------------------------------------------------
@@ -48,7 +56,7 @@ COMEDY_PERSONAS = {
     "the_energetic_oddball": {
         "name": "The Energetic Oddball",
         "guideline": "A lively comedian who makes silly, funny connections about regular life."
-    },      
+    },
     "the_smooth_storyteller": {
         "name": "The Smooth Storyteller",
         "guideline": "A smooth comedian who tells funny, easy stories with a big laugh at the end."
@@ -97,20 +105,20 @@ async def serve_model1_glb():
         Path("model1.glb"),
         Path("frontend/model1.glb")
     ]
-    
+
     for glb_path in possible_paths:
         if glb_path.exists():
             logger.info(f"✅ Serving model from: {glb_path}")
             return FileResponse(
-                glb_path, 
+                glb_path,
                 media_type="model/gltf-binary",
                 headers={
                     "Access-Control-Allow-Origin": "*",
                     "Cache-Control": "public, max-age=3600"
                 }
             )
-    
-    logger.error(f"❌ model1.glb not found")
+
+    logger.error("❌ model1.glb not found")
     raise HTTPException(status_code=404, detail="model1.glb not found")
 
 @app.get("/")
@@ -128,21 +136,21 @@ TRENDS_API_URL = "https://trends.googleapis.com/v1beta/search/trends/daily"
 async def fetch_trending_phrase() -> str:
     api_key = GOOGLE_TRENDS_API_KEY or GEMINI_API_KEY
     non_trending_themes = ["rainy days", "old TVs", "car troubles", "long lines", "bad Wi-Fi", "loud neighbors", "cheap shoes", "forgotten passwords"]
-    
+
     if random.choice([True, False]):
         logger.info("🎣 Using non-trending theme")
         return random.choice(non_trending_themes)
-    
+
     if not api_key or api_key == "YOUR_GOOGLE_TRENDS_API_KEY_HERE":
         logger.warning("No Trends API key; using fallback")
         return random.choice(["coffee", "phones", "weather", "pizza", "traffic", "shopping", "TV shows", "work"])
-    
+
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "X-Goog-Api-Key": api_key
     }
     params = {"geo": "US", "hl": "en", "tz": -120}
-    
+
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(TRENDS_API_URL, headers=headers, params=params)
@@ -153,35 +161,86 @@ async def fetch_trending_phrase() -> str:
             phrase = random.choice([t.get("title", {}).get("query", "funny topic") for t in trends])
             logger.info(f"🎣 Using trending topic: {phrase}")
             return phrase.strip()
-        return "funny topic"
+        return random.choice(non_trending_themes)
     except Exception as e:
         logger.warning(f"Google Trends unavailable. Using fallback topic: {e}")
-        return "funny topic"
+        return random.choice(non_trending_themes)
 
+# ---------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------
+SENTENCE_SPLIT = r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s'
+
+def split_sentences(script: str):
+    return [s.strip() for s in re.split(SENTENCE_SPLIT, script) if s.strip()]
+
+def build_ssml(sentences):
+    return ' '.join(f'{sent}<break time="0.5s"/>' for sent in sentences)
+
+def build_fallback(topic: str, persona_key: str):
+    fallback_script = (
+        f"Whoa, {topic}? Wait a minute, that's the craziest thing I've heard all week! "
+        f"You know, I was just thinking about how {topic} always sneaks up on you. "
+        f"Like, one minute you're fine, next you're knee-deep in chaos. "
+        f"Take me, for example. Last time {topic} happened, I panicked. "
+        f"Called my mom at 3 AM. She said, 'Honey, breathe.' But how? It's {topic}! "
+        f"Everything spirals. My coffee spills. Dog starts barking. Neighbors think I'm nuts. "
+        f"And the laughs? Oh, they come later. When you realize {topic} is just life saying, 'Surprise!' "
+        f"But seriously, why does {topic} hit hardest on Mondays? Universe's joke? "
+        f"Anyway, thanks for listening, you're the best crowd ever! Goodnight!"
+    )
+    sentences = split_sentences(fallback_script)
+    return {
+        "success": True,
+        "phrases": sentences,
+        "full_script": fallback_script,
+        "ssml_script": build_ssml(sentences),
+        "topic": topic,
+        "persona": persona_key,
+        "fallback": True
+    }
+
+def build_gen_config() -> dict:
+    cfg = {
+        "temperature": 1.3,
+        "topK": 60,
+        "topP": 0.95,
+        "maxOutputTokens": 1500,
+    }
+    # Keep "thinking" minimal: it adds latency and eats into maxOutputTokens.
+    if GEMINI_MODEL.startswith("gemini-2.5"):
+        cfg["thinkingConfig"] = {"thinkingBudget": 0}
+    elif GEMINI_MODEL.startswith("gemini-3"):
+        cfg["thinkingConfig"] = {"thinkingLevel": "low"}
+    return cfg
+
+# ---------------------------------------------------------
+# GENERATE JOKE
+# ---------------------------------------------------------
 @app.post("/api/generate_joke")
 async def generate_joke(req: JokeRequest):
+    persona_key = req.persona
+    persona_data = COMEDY_PERSONAS.get(persona_key)
+    if not persona_data:
+        raise HTTPException(status_code=400, detail=f"Unknown persona: {persona_key}")
+
+    guideline = persona_data["guideline"]
+    topic = await fetch_trending_phrase()
+    logger.info(f"🎣 Topic seed: {topic}")
+
     try:
-        persona_key = req.persona
-        persona_data = COMEDY_PERSONAS.get(persona_key)
-        if not persona_data:
-            raise HTTPException(status_code=400, detail=f"Unknown persona: {persona_key}")
-
-        guideline = persona_data["guideline"]
-        topic = await fetch_trending_phrase()
-        logger.info(f"🎣 Topic seed: {topic}")
-
         prompt = f"""
             You are a professional stand-up comedian doing a **live 2-minute set**.
-            
+
             Persona: {guideline}
-            
+
             A wild thought about **"{topic}"** just hit you out of nowhere!
             Build a complete stand-up comedy routine of 150-180 words.
             The routine must contain at least 12-15 complete sentences.
             Do not stop after the introduction.
             Develop the joke with relatable situations, funny observations,
             unexpected punchlines, and a strong ending.
-            
+
             Rules:
             - Start with a surprised reaction like 'Whoa!' or 'Wait!'
             - Use super simple language with funny, relatable ideas.
@@ -190,16 +249,9 @@ async def generate_joke(req: JokeRequest):
             - Use only dialogue, no stage directions, no session IDs, no numbers.
             - Keep it quick, punchy, and hilarious.
             - DO NOT include any session numbers, IDs, or technical markers.
-            
+
             Topic: "{topic}"
             """
-
-        gen_config = {
-            "temperature": 1.3,
-            "topK": 60,
-            "topP": 0.95,
-            "maxOutputTokens": 1500
-        }
 
         safety_settings = [
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -209,89 +261,87 @@ async def generate_joke(req: JokeRequest):
             {"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "BLOCK_NONE"}
         ]
 
-        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+        if not GEMINI_API_KEY:
+            logger.error("GEMINI_API_KEY is not set; using fallback script")
+            return build_fallback(topic, persona_key)
 
-        for attempt in range(4):  # Reduced retries for speed
-            async with httpx.AsyncClient(timeout=40.0) as client:  # Reduced timeout
-                res = await client.post(
-                    model_url,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": gen_config,
-                        "safetySettings": safety_settings
-                    }
-                )
-
-            if res.status_code in [429, 500, 502, 503, 504]:
-                logger.warning(
-                    f"Gemini temporarily unavailable: {res.status_code}. "
-                    f"Retry {attempt + 1}/4"
-                )
-                await asyncio.sleep(2 ** (attempt + 1))
-                continue
-
-            if res.status_code != 200:
-                logger.error(f"Gemini HTTP {res.status_code}: {res.text[:500]}")
-                raise Exception(f"Gemini API error {res.status_code}: {res.text[:100]}")
-
-            data = res.json()
-            logger.info(f"Gemini raw response keys: {list(data.keys())}")
-
-            candidates = data.get("candidates", [])
-            if not candidates:
-                logger.error(f"No candidates in response: {json.dumps(data, indent=2)[:1000]}")
-                logger.info("Possible safety block—check promptFeedback: ", data.get("promptFeedback", {}))
-                break
-
-            candidate = candidates[0]
-            content = candidate.get("content", {})
-            parts = content.get("parts", [])
-            if not parts:
-                logger.error(f"No parts in candidate: {json.dumps(candidate, indent=2)[:500]}")
-                logger.info("Finish reason: ", candidate.get("finishReason"))
-                break
-
-            script = parts[0].get("text", "").strip()
-            if not script:
-                logger.error(f"Empty text in parts: {json.dumps(parts, indent=2)[:300]}")
-                break
-
-            # Clean up script - remove any session/ID markers
-            script = re.sub(r'\[SESSION-\d+-[\d.]+\]', '', script)
-            script = re.sub(r'Show ID: [\d-]+', '', script)
-            script = re.sub(r'\(|\)', '', script)
-            script = re.sub(r'#+\s*', '', script)
-            script = re.sub(r'\s+', ' ', script).strip()
-
-            sentences = [s.strip() for s in re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', script) if s.strip()]
-            ssml_script = ' '.join([f'{sent}<break time="0.5s"/>' for sent in sentences])
-
-            logger.info(f"✅ Generated {len(script.split())} words, {len(sentences)} sentences")
-            return {
-                "success": True,
-                "phrases": sentences,
-                "full_script": script,
-                "ssml_script": ssml_script,
-                "topic": topic,
-                "persona": persona_key
-            }
-
-        logger.warning("Using fallback script—check Gemini key/quota/safety!")
-        fallback_script = f"""Whoa, {topic}? Wait a minute—that's the craziest thing I've heard all week! You know, I was just thinking about how {topic} always sneaks up on you. Like, one minute you're fine, next you're knee-deep in chaos. Take me, for example. Last time {topic} happened, I panicked. Called my mom at 3 AM. She said, 'Honey, breathe.' But how? It's {topic}! Everything spirals. My coffee spills. Dog starts barking. Neighbors think I'm nuts. And the laughs? Oh, they come later. When you realize {topic} is just life saying, 'Surprise!' But seriously, why does {topic} hit hardest on Mondays? Universe's joke? Anyway, thanks for listening—you're the best crowd ever! Goodnight!"""
-        sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|\!)\s', fallback_script)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        ssml_script = ' '.join([f'{sent}<break time="0.5s"/>' for sent in sentences])
-        return {
-            "success": True,
-            "phrases": sentences,
-            "full_script": fallback_script,
-            "ssml_script": ssml_script,
-            "topic": topic,
-            "persona": persona_key,
-            "fallback": True
+        # API key goes in a header, not the URL, so it never shows up in logs
+        model_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+        headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": build_gen_config(),
+            "safetySettings": safety_settings,
         }
+        timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
+        max_attempts = 3
 
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for attempt in range(max_attempts):
+                try:
+                    res = await client.post(model_url, headers=headers, json=payload)
+                except httpx.TimeoutException:
+                    logger.warning(f"Gemini timeout, attempt {attempt + 1}/{max_attempts}")
+                    continue
+                except httpx.HTTPError as e:
+                    logger.warning(f"Gemini network error ({type(e).__name__}), attempt {attempt + 1}/{max_attempts}")
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+
+                if res.status_code in (429, 500, 502, 503, 504):
+                    logger.warning(f"Gemini {res.status_code}, attempt {attempt + 1}/{max_attempts}")
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+
+                if res.status_code != 200:
+                    # 400/403/404 etc. won't fix themselves on retry (bad key, wrong model ID, ...)
+                    logger.error(f"Gemini HTTP {res.status_code}: {res.text[:500]}")
+                    break
+
+                data = res.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    logger.error(f"No candidates in response: {json.dumps(data, indent=2)[:1000]}")
+                    logger.info(f"Possible safety block, promptFeedback: {data.get('promptFeedback', {})}")
+                    break
+
+                candidate = candidates[0]
+                parts = candidate.get("content", {}).get("parts", [])
+                if not parts:
+                    logger.error(f"No parts in candidate: {json.dumps(candidate, indent=2)[:500]}")
+                    logger.info(f"Finish reason: {candidate.get('finishReason')}")
+                    break
+
+                # Join all text parts (some models return more than one)
+                script = " ".join(p.get("text", "") for p in parts if p.get("text")).strip()
+                if not script:
+                    logger.error(f"Empty text in parts: {json.dumps(parts, indent=2)[:300]}")
+                    break
+
+                # Clean up script - remove any session/ID markers
+                script = re.sub(r'\[SESSION-\d+-[\d.]+\]', '', script)
+                script = re.sub(r'Show ID: [\d-]+', '', script)
+                script = re.sub(r'\(|\)', '', script)
+                script = re.sub(r'#+\s*', '', script)
+                script = re.sub(r'\s+', ' ', script).strip()
+
+                sentences = split_sentences(script)
+
+                logger.info(f"✅ Generated {len(script.split())} words, {len(sentences)} sentences")
+                return {
+                    "success": True,
+                    "phrases": sentences,
+                    "full_script": script,
+                    "ssml_script": build_ssml(sentences),
+                    "topic": topic,
+                    "persona": persona_key
+                }
+
+        logger.warning("Using fallback script. Check Gemini key / model ID / quota / safety!")
+        return build_fallback(topic, persona_key)
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("GEMINI GENERATION TRACEBACK")
         raise HTTPException(
@@ -300,12 +350,12 @@ async def generate_joke(req: JokeRequest):
         )
 
 # ---------------------------------------------------------
-# SYNTHESIZE VOICE - OPTIMIZED FOR PARALLEL REQUESTS
+# SYNTHESIZE VOICE
 # ---------------------------------------------------------
 @app.post("/api/synthesize")
 async def synthesize(req: SynthesizeRequest):
     try:
-        if ELEVENLABS_API_KEY == "YOUR_ELEVENLABS_KEY_HERE":
+        if not ELEVENLABS_API_KEY:
             raise Exception("ElevenLabs API key not set")
 
         voice_id = VOICE_IDS.get(req.persona, VOICE_IDS["conversational"])
@@ -316,23 +366,21 @@ async def synthesize(req: SynthesizeRequest):
         clean_text = re.sub(r'Show ID: [\d-]+', '', clean_text).strip()
 
         logger.info(f"🎤 Synthesizing {len(clean_text.split())} words")
-        
-        # Single attempt with optimized settings for parallel processing
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:  # Shorter timeout for parallel
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
                     headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
                     json={
                         "text": clean_text,
-                        "model_id": "eleven_turbo_v2_5",  # FASTEST MODEL!
+                        "model_id": "eleven_turbo_v2_5",
                         "voice_settings": {
                             "stability": voice_settings["stability"],
                             "similarity_boost": voice_settings["similarity_boost"],
-                            "use_speaker_boost": False  # Disable for speed
+                            "use_speaker_boost": False
                         },
-                        "output_format": "mp3_22050_32",  # Lower quality = faster generation
-                        "optimize_streaming_latency": 4  # Max optimization for speed
+                        "output_format": "mp3_22050_32"
                     }
                 )
 
@@ -348,9 +396,9 @@ async def synthesize(req: SynthesizeRequest):
                 error_detail = response.text[:200]
                 logger.error(f"❌ ElevenLabs {response.status_code}: {error_detail}")
                 return {"success": False, "error": f"API Error {response.status_code}"}
-                
+
         except httpx.TimeoutException:
-            logger.error(f"⏱️ Timeout generating audio")
+            logger.error("⏱️ Timeout generating audio")
             return {"success": False, "error": "Timeout"}
 
     except Exception as e:
@@ -362,12 +410,12 @@ async def synthesize(req: SynthesizeRequest):
 # ---------------------------------------------------------
 @app.get("/api/health")
 async def health():
-    trends_key_ok = GOOGLE_TRENDS_API_KEY and GOOGLE_TRENDS_API_KEY != "GOOGLE_TRENDS_API_KEY"
     return {
         "status": "healthy",
+        "gemini_model": GEMINI_MODEL,
         "gemini_key": "✅" if GEMINI_API_KEY else "❌",
-        "elevenlabs_key": "✅" if ELEVENLABS_API_KEY and ELEVENLABS_API_KEY != "ELEVEN_LABS_API_KEY" else "❌",
-        "trends_key": "✅" if trends_key_ok else "❌"
+        "elevenlabs_key": "✅" if ELEVENLABS_API_KEY else "❌",
+        "trends_key": "✅" if GOOGLE_TRENDS_API_KEY else "❌"
     }
 
 # ---------------------------------------------------------
@@ -377,9 +425,10 @@ if __name__ == "__main__":
     import uvicorn
     print("\n🎭 Virtual Comedy Show Backend Running")
     print("=" * 50)
-    print(f"Gemini API Key: {'✅ Set' if GEMINI_API_KEY and GEMINI_API_KEY != 'GOOGLE_GEMENI_API_KEY' else '⚠️ CHECK/REPLACE'}")
-    print(f"ElevenLabs API Key: {'✅ Set' if ELEVENLABS_API_KEY and ELEVENLABS_API_KEY != 'ELEVEN_LABS_API_KEY' else '❌ Missing'}")
-    print(f"Trends API Key: {'✅ Set' if GOOGLE_TRENDS_API_KEY and GOOGLE_TRENDS_API_KEY != 'GOOGLE_TRENDS_API_KEY' else '❌ Missing (using fallback)'}")
+    print(f"Gemini model: {GEMINI_MODEL}")
+    print(f"Gemini API Key: {'✅ Set' if GEMINI_API_KEY else '❌ Missing'}")
+    print(f"ElevenLabs API Key: {'✅ Set' if ELEVENLABS_API_KEY else '❌ Missing'}")
+    print(f"Trends API Key: {'✅ Set' if GOOGLE_TRENDS_API_KEY else '❌ Missing (using fallback)'}")
     print("→ Visit http://localhost:8000 | Get new Gemini key: ai.google.dev")
     print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
