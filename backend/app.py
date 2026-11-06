@@ -176,7 +176,11 @@ async def generate_joke(req: JokeRequest):
             Persona: {guideline}
             
             A wild thought about **"{topic}"** just hit you out of nowhere!
-            Build a **completely fresh, 250-350 word routine** that's punchy and hilarious.
+            Build a complete stand-up comedy routine of 150-180 words.
+            The routine must contain at least 12-15 complete sentences.
+            Do not stop after the introduction.
+            Develop the joke with relatable situations, funny observations,
+            unexpected punchlines, and a strong ending.
             
             Rules:
             - Start with a surprised reaction like 'Whoa!' or 'Wait!'
