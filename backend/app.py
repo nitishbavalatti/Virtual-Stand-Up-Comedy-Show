@@ -171,24 +171,24 @@ async def generate_joke(req: JokeRequest):
         logger.info(f"🎣 Topic seed: {topic}")
 
         prompt = f"""
-You are a professional stand-up comedian doing a **live 2-minute set**.
-
-Persona: {guideline}
-
-A wild thought about **"{topic}"** just hit you out of nowhere!
-Build a **completely fresh, 250-350 word routine** that's punchy and hilarious.
-
-Rules:
-- Start with a surprised reaction like 'Whoa!' or 'Wait!'
-- Use super simple language with funny, relatable ideas.
-- Pack in 2-3 big laughs and a funny ending.
-- Write in SHORT sentences (5-15 words each).
-- Use only dialogue, no stage directions, no session IDs, no numbers.
-- Keep it quick, punchy, and hilarious.
-- DO NOT include any session numbers, IDs, or technical markers.
-
-Topic: "{topic}"
-"""
+            You are a professional stand-up comedian doing a **live 2-minute set**.
+            
+            Persona: {guideline}
+            
+            A wild thought about **"{topic}"** just hit you out of nowhere!
+            Build a **completely fresh, 250-350 word routine** that's punchy and hilarious.
+            
+            Rules:
+            - Start with a surprised reaction like 'Whoa!' or 'Wait!'
+            - Use super simple language with funny, relatable ideas.
+            - Pack in 2-3 big laughs and a funny ending.
+            - Write in SHORT sentences (5-15 words each).
+            - Use only dialogue, no stage directions, no session IDs, no numbers.
+            - Keep it quick, punchy, and hilarious.
+            - DO NOT include any session numbers, IDs, or technical markers.
+            
+            Topic: "{topic}"
+            """
 
         gen_config = {
             "temperature": 1.3,
@@ -285,8 +285,11 @@ Topic: "{topic}"
         }
 
     except Exception as e:
-        logger.error(f"❌ Joke generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("GEMINI GENERATION TRACEBACK")
+        raise HTTPException(
+            status_code=500,
+            detail=f"{type(e).__name__}: {repr(e)}"
+        )
 
 # ---------------------------------------------------------
 # SYNTHESIZE VOICE - OPTIMIZED FOR PARALLEL REQUESTS
